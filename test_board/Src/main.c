@@ -63,6 +63,7 @@ uint8_t debug_buf[256];
 uint8_t fw_buf[40 * 1024];
 uint32_t fw_length;
 uint16_t fw_crc;
+uint32_t counter = 0;
 /* USER CODE END 0 */
 
 /**
@@ -97,8 +98,12 @@ int main(void)
   MX_TIM3_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim3);
+  HAL_GPIO_WritePin(PINOUT_GPIO_Port, PINOUT_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(PINOUT2_GPIO_Port, PINOUT2_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(PINOUT3_GPIO_Port, PINOUT3_Pin, GPIO_PIN_SET);
   /* USER CODE END 2 */
  
  
@@ -108,7 +113,7 @@ int main(void)
   while (1)
   {
     if (HAL_UART_Receive(&huart1, &ch, 1, 0xFFFFFFFF) == HAL_OK) {
-      if (ch == 'A') {
+      if (ch == 'Z') {
         if (HAL_UART_Receive(&huart1, &ch, 1, 0xFFFFFFFF) == HAL_OK) {
           while (1) {
             send_cmd(ch, NULL);
@@ -169,6 +174,49 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   if (htim->Instance == TIM3) {
     TOGGLE_LED1();
+  } else if (htim->Instance == TIM2) {
+    switch (counter++) {
+      case 0:
+        HAL_GPIO_WritePin(PINOUT_GPIO_Port, PINOUT_Pin, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(PINOUT2_GPIO_Port, PINOUT2_Pin, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(PINOUT3_GPIO_Port, PINOUT3_Pin, GPIO_PIN_RESET);
+        break;
+      case 1:
+        HAL_GPIO_WritePin(PINOUT_GPIO_Port, PINOUT_Pin, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(PINOUT2_GPIO_Port, PINOUT2_Pin, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(PINOUT3_GPIO_Port, PINOUT3_Pin, GPIO_PIN_SET);
+        break;
+      case 2:
+        HAL_GPIO_WritePin(PINOUT_GPIO_Port, PINOUT_Pin, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(PINOUT2_GPIO_Port, PINOUT2_Pin, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(PINOUT3_GPIO_Port, PINOUT3_Pin, GPIO_PIN_RESET);
+        break;
+      case 3:
+        break;
+      case 4:
+        HAL_GPIO_WritePin(PINOUT_GPIO_Port, PINOUT_Pin, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(PINOUT2_GPIO_Port, PINOUT2_Pin, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(PINOUT3_GPIO_Port, PINOUT3_Pin, GPIO_PIN_SET);
+        break;
+      case 5:
+        HAL_GPIO_WritePin(PINOUT_GPIO_Port, PINOUT_Pin, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(PINOUT2_GPIO_Port, PINOUT2_Pin, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(PINOUT3_GPIO_Port, PINOUT3_Pin, GPIO_PIN_RESET);
+        break;
+      case 6:
+        break;
+      case 7:
+        break;
+      case 8:
+        HAL_GPIO_WritePin(PINOUT_GPIO_Port, PINOUT_Pin, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(PINOUT2_GPIO_Port, PINOUT2_Pin, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(PINOUT3_GPIO_Port, PINOUT3_Pin, GPIO_PIN_SET);
+        counter = 0;
+        break;
+      default:
+        break;
+    }
+    
   }
 }
 
@@ -327,6 +375,37 @@ uint32_t send_cmd(uint8_t ch, char *arg)
       buf[CMD_SEQ_COMMAND_LOW + 1] = Cal_Check(&buf[CMD_SEQ_LENGTH], 3);
       length = 5;
       break;
+    case 'A':
+      EPT("Get MDATE\n");
+      buf[CMD_SEQ_START] = 0x55;
+      buf[CMD_SEQ_LENGTH] = 4;
+      buf[CMD_SEQ_COMMAND_HIGH] = 0;
+      buf[CMD_SEQ_COMMAND_LOW] = CMD_QUERY_MDATE;
+      buf[CMD_SEQ_COMMAND_LOW + 1] = Cal_Check(&buf[CMD_SEQ_LENGTH], 3);
+      length = 5;
+      break;
+    case 'B':
+      EPT("Get PN\n");
+      buf[CMD_SEQ_START] = 0x55;
+      buf[CMD_SEQ_LENGTH] = 4;
+      buf[CMD_SEQ_COMMAND_HIGH] = 0;
+      buf[CMD_SEQ_COMMAND_LOW] = CMD_QUERY_PN;
+      buf[CMD_SEQ_COMMAND_LOW + 1] = Cal_Check(&buf[CMD_SEQ_LENGTH], 3);
+      length = 5;
+      break;
+    case 'C':
+      HAL_GPIO_WritePin(PINOUT_GPIO_Port, PINOUT_Pin, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(PINOUT2_GPIO_Port, PINOUT2_Pin, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(PINOUT3_GPIO_Port, PINOUT3_Pin, GPIO_PIN_SET);
+      counter = 0;
+      HAL_TIM_Base_Start_IT(&htim2);
+      return 0;
+    case 'D':
+      HAL_GPIO_WritePin(PINOUT_GPIO_Port, PINOUT_Pin, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(PINOUT2_GPIO_Port, PINOUT2_Pin, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(PINOUT3_GPIO_Port, PINOUT3_Pin, GPIO_PIN_SET);
+      HAL_TIM_Base_Stop_IT(&htim2);
+      return 0;
     default:
       EPT("Unknown command\n");
       return 0;
@@ -353,6 +432,10 @@ uint32_t send_cmd(uint8_t ch, char *arg)
   }
   for (int i = 0; i < rcv_len; ++i) {
     EPT("%#X\n", buf[i]);
+  }
+  if (buf[CMD_SEQ_COMMAND_LOW] == CMD_QUERY_VERSION) {
+    buf[CMD_SEQ_DATA + 8] = 0;
+    EPT("%s\n", &buf[CMD_SEQ_DATA]);
   }
   return 0;
 }

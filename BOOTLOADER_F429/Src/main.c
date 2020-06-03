@@ -53,6 +53,11 @@
 /* USER CODE BEGIN PV */
 const char start_msg[] = "\nWaiting to enter application, Press any key to interrput";
 const char VERSION[] = "\n******* BOOTLOADER VERSION 0.0.1 *******\n";
+uint8_t reset_flag = 0;
+
+#ifdef USE_SRAM_FOR_FW_IMG
+uint8_t fw_buffer[FW_MAX_LENGTH] __attribute__((at(0x20020000)));
+#endif
 
 /* USER CODE END PV */
 
@@ -105,6 +110,7 @@ int main(void)
   MX_USART3_UART_Init();
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
+  Boot_Init();
   HAL_UART_Transmit(&huart3, (uint8_t*)VERSION, strlen(VERSION), TX_TIMEOUT);
   //HAL_UART_Transmit(&huart3, (uint8_t*)start_msg, strlen(start_msg), TX_TIMEOUT);
   
@@ -194,6 +200,31 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+void Boot_Init(void)
+{
+  if (__HAL_RCC_GET_FLAG(RCC_FLAG_BORRST) != RESET){
+    SET_RESETFLAG(BOR_RESET_BIT);
+  }
+  if (__HAL_RCC_GET_FLAG(RCC_FLAG_PINRST) != RESET){
+    SET_RESETFLAG(PIN_RESET_BIT);
+  }
+  if (__HAL_RCC_GET_FLAG(RCC_FLAG_PORRST) != RESET){
+    SET_RESETFLAG(POR_RESET_BIT);
+  }
+  if (__HAL_RCC_GET_FLAG(RCC_FLAG_SFTRST) != RESET){
+    SET_RESETFLAG(SFT_RESET_BIT);
+  }
+  if (__HAL_RCC_GET_FLAG(RCC_FLAG_IWDGRST) != RESET){
+    SET_RESETFLAG(IWDG_RESET_BIT);
+  }
+  if (__HAL_RCC_GET_FLAG(RCC_FLAG_WWDGRST) != RESET){
+    SET_RESETFLAG(WWDG_RESET_BIT);
+  }
+  if (__HAL_RCC_GET_FLAG(RCC_FLAG_LPWRRST) != RESET){
+    SET_RESETFLAG(LPWR_RESET_BIT);
+  }
+}
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   if (htim->Instance == htim3.Instance) {

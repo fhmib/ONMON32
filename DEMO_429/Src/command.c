@@ -9,9 +9,15 @@
 #include "task.h"
 #include "cmsis_os.h"
 #include "adc.h"
+#include "iwdg.h"
 
 UpgradeStruct up_state;
 extern osSemaphoreId_t flashSemaphore;
+
+char *FW_VERSION = "TESTPO05    "; // Total length must bigger than 8 bytes
+char *SERIAL_NUMBER = "123456789    "; // Total length must bigger than 9 bytes
+char *PART_NUMBER = "1231231231231231    "; // Total length must bigger than 16 bytes
+char *MDATE = "20200202    "; // Total length must bigger than 8 bytes
 
 CmdStruct command_list[] = {
   {CMD_QUERY_SN, Cmd_Get_Sn},
@@ -48,6 +54,8 @@ uint32_t Cmd_Get_Sn()
 {
   sprintf((char*)resp_msg.buf, "123456789");
   FILL_RESP_MSG(RESPOND_SUCCESS, CMD_QUERY_SN, 9);
+  HAL_GPIO_WritePin(SPI1_CS0_GPIO_Port, SPI1_CS0_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(SPI1_CS0_GPIO_Port, SPI1_CS0_Pin, GPIO_PIN_SET);
   return RESPOND_SUCCESS;
 }
 
@@ -60,15 +68,17 @@ uint32_t Cmd_Get_Version()
 
 uint32_t Cmd_Get_Mdate()
 {
-  EPT("Cmd_Get_Mdate\n");
-  FILL_RESP_MSG(RESPOND_UNSUPPORT, CMD_QUERY_MDATE, 0);
+  memcpy(resp_msg.buf, MDATE, 8);
+  pinout_enable = 1;
+  FILL_RESP_MSG(RESPOND_SUCCESS, CMD_QUERY_MDATE, 8);
   return RESPOND_SUCCESS;
 }
 
 uint32_t Cmd_Get_Pn()
 {
-  EPT("Cmd_Get_Pn\n");
-  FILL_RESP_MSG(RESPOND_UNSUPPORT, CMD_QUERY_PN, 0);
+  memcpy(resp_msg.buf, PART_NUMBER, 16);
+  pinout_enable = 0;
+  FILL_RESP_MSG(RESPOND_SUCCESS, CMD_QUERY_PN, 16);
   return RESPOND_SUCCESS;
 }
 
@@ -142,6 +152,9 @@ uint32_t Cmd_Upgrade_Data()
 {
   uint16_t seq;
   uint8_t *p_fw_data = &uart_msg.uart_buf[CMD_SEQ_DATA + 2];
+#ifndef USE_SRAM_FOR_FW_IMG
+  uint32_t status;
+#endif
 
   if (run_state.mode != RUN_MODE_UPGRADE) {
     EPT("Cannot excute cmd beacuse of wrong mode\n");
@@ -181,10 +194,17 @@ uint32_t Cmd_Upgrade_Data()
               (p_fw_data[FW_FILE_CRC + 1 - 0x80] << 0);
       EPT("Fw size = %#X, crc = %#X\n", up_state.length, up_state.crc16);
 
+#ifndef USE_SRAM_FOR_FW_IMG
       // TODO: Upgrade initialization process
       FLASH_If_Init();
 
-      if (FLASH_If_Erase(DOWNLOAD_SECTOR) == FLASHIF_OK) {
+      wd_enable = 0;
+      HAL_IWDG_Refresh(&hiwdg);
+      status = FLASH_If_Erase(DOWNLOAD_SECTOR);
+      HAL_IWDG_Refresh(&hiwdg);
+      wd_enable = 1;
+
+      if (status == FLASHIF_OK) {
         // success
         //osDelay(pdMS_TO_TICKS(10));
         up_state.pre_state = UPGRADE_SUCCESS;
@@ -197,7 +217,21 @@ uint32_t Cmd_Upgrade_Data()
         FILL_RESP_MSG(RESPOND_FAILURE, CMD_UPGRADE_DATA, 0);
         return RESPOND_FAILURE;
       }
+#else
+      if (up_state.length > FW_MAX_LENGTH) {
+        EPT("Length invalid\n");
+        up_state.pre_state = UPGRADE_FAILURE;
+        FILL_RESP_MSG(RESPOND_FAILURE, CMD_UPGRADE_DATA, 0);
+        return RESPOND_FAILURE;
+      } else {
+        up_state.pre_state = UPGRADE_SUCCESS;
+        FILL_RESP_MSG(RESPOND_SUCCESS, CMD_UPGRADE_DATA, 0);
+        return RESPOND_SUCCESS;
+      }
+#endif
     } else {
+      EPT("Seq invalid\n");
+      FILL_RESP_MSG(RESPOND_FAILURE, CMD_UPGRADE_DATA, 0);
       return RESPOND_FAILURE;
     }
 
@@ -205,7 +239,7 @@ uint32_t Cmd_Upgrade_Data()
     if ((seq == up_state.pre_seq + 1 && up_state.pre_state == UPGRADE_SUCCESS) || \
       (seq == up_state.pre_seq && up_state.pre_state == UPGRADE_FAILURE)) {
       up_state.pre_seq = seq;
-
+#ifndef USE_SRAM_FOR_FW_IMG
       // Subsequent data
       if (FLASH_If_Write(DOWNLOAD_ADDRESS + (seq - 3) * PACKET_LENGTH, (uint32_t*)p_fw_data, PACKET_LENGTH / 4) == FLASHIF_OK) {
         up_state.pre_state = UPGRADE_SUCCESS;
@@ -219,6 +253,12 @@ uint32_t Cmd_Upgrade_Data()
         FILL_RESP_MSG(RESPOND_FAILURE, CMD_UPGRADE_DATA, 0);
         return RESPOND_FAILURE;
       }
+#else
+      memcpy(fw_buffer + (seq - 3) * PACKET_LENGTH, p_fw_data, PACKET_LENGTH);
+      up_state.pre_state = UPGRADE_SUCCESS;
+      FILL_RESP_MSG(RESPOND_SUCCESS, CMD_UPGRADE_DATA, 0);
+      return RESPOND_SUCCESS;
+#endif
     } else {
       EPT("Invalid seq = %u\n", seq);
       FILL_RESP_MSG(RESPOND_FAILURE, CMD_UPGRADE_DATA, 0);
@@ -236,6 +276,7 @@ uint32_t Cmd_Upgrade_Data()
 uint32_t Cmd_Upgrade_Run()
 {
   UpgradeFlashState f_state;
+  uint32_t status;
 
   if (run_state.mode != RUN_MODE_UPGRADE) {
     EPT("Cannot excute cmd beacuse of wrong mode\n");
@@ -248,8 +289,13 @@ uint32_t Cmd_Upgrade_Run()
     return RESPOND_FAILURE;
   }
 
+#ifndef USE_SRAM_FOR_FW_IMG
   uint8_t *pdata = (uint8_t*)DOWNLOAD_ADDRESS;
   uint16_t crc = Cal_CRC16(pdata, up_state.length);
+#else
+  uint8_t *pdata = fw_buffer;
+  uint16_t crc = Cal_CRC16(pdata, up_state.length);
+#endif
   if (crc != up_state.crc16) {
     EPT("CRC verified failed. %#X != %#X\n", crc, up_state.crc16);
     FILL_RESP_MSG(RESPOND_FAILURE, CMD_UPGRADE_RUN, 0);
@@ -263,9 +309,16 @@ uint32_t Cmd_Upgrade_Run()
   f_state.crc16 = up_state.crc16;
   f_state.length = up_state.length;
   f_state.upgrade = 1;
-  if (FLASH_If_Erase(CONFIG_SECTOR) != FLASHIF_OK) {
-    // success
-    osDelay(pdMS_TO_TICKS(10));
+
+  wd_enable = 0;
+  HAL_IWDG_Refresh(&hiwdg);
+  status = FLASH_If_Erase(CONFIG_SECTOR);
+  HAL_IWDG_Refresh(&hiwdg);
+  wd_enable = 1;
+
+  if (status != FLASHIF_OK) {
+    // failure
+    //osDelay(pdMS_TO_TICKS(10));
     EPT("Erase flash failed\n");
     FILL_RESP_MSG(RESPOND_FAILURE, CMD_UPGRADE_RUN, 0);
     return RESPOND_FAILURE;

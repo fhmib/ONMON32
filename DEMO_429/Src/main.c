@@ -23,7 +23,9 @@
 #include "cmsis_os.h"
 #include "adc.h"
 #include "dma.h"
+#include "i2c.h"
 #include "iwdg.h"
+#include "spi.h"
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
@@ -55,10 +57,15 @@
 /* USER CODE BEGIN PV */
 uint8_t debug_buf[UART_MAX_LENGTH] = {0};
 uint8_t wd_enable = 1;
+uint8_t pinout_enable;
+uint8_t reset_flag = 0;
 RespondStruct resp_msg;
-char *FW_VERSION = "H000S002    "; // Total length must bigger than 8 bytes
 UartStu uart_msg;
 RunState run_state;
+
+#ifdef USE_SRAM_FOR_FW_IMG
+uint8_t fw_buffer[FW_MAX_LENGTH] __attribute__((at(0x20020000)));
+#endif
 
 extern osSemaphoreId_t watchdogSemaphore;
 /* USER CODE END PV */
@@ -108,8 +115,13 @@ int main(void)
   MX_USART1_UART_Init();
   MX_ADC1_Init();
   MX_IWDG_Init();
+  MX_SPI1_Init();
   MX_TIM3_Init();
+  MX_I2C1_Init();
+  MX_TIM8_Init();
   /* USER CODE BEGIN 2 */
+  HAL_TIM_IC_Start_IT(&htim8, TIM_CHANNEL_1);
+  HAL_TIM_IC_Start_IT(&htim8, TIM_CHANNEL_2);
 
   /* USER CODE END 2 */
   /* Init scheduler */
@@ -189,8 +201,62 @@ void Mon_Init(void)
   run_state.mode = RUN_MODE_APPLICATION;
   uart_msg.stage = UART_WAIT_START;
   wd_enable = 1;
+
+  if (__HAL_RCC_GET_FLAG(RCC_FLAG_BORRST) != RESET){
+    SET_RESETFLAG(BOR_RESET_BIT);
+    EPT("BOR Reset is set\n");
+  }
+  if (__HAL_RCC_GET_FLAG(RCC_FLAG_PINRST) != RESET){
+    SET_RESETFLAG(PIN_RESET_BIT);
+    EPT("PIN Reset is set\n");
+  }
+  if (__HAL_RCC_GET_FLAG(RCC_FLAG_PORRST) != RESET){
+    SET_RESETFLAG(POR_RESET_BIT);
+    EPT("POR/PDR Reset is set\n");
+  }
+  if (__HAL_RCC_GET_FLAG(RCC_FLAG_SFTRST) != RESET){
+    SET_RESETFLAG(SFT_RESET_BIT);
+    EPT("Software Reset is set\n");
+  }
+  if (__HAL_RCC_GET_FLAG(RCC_FLAG_IWDGRST) != RESET){
+    SET_RESETFLAG(IWDG_RESET_BIT);
+    EPT("Independent Watchdog Reset is set\n");
+  }
+  if (__HAL_RCC_GET_FLAG(RCC_FLAG_WWDGRST) != RESET){
+    SET_RESETFLAG(WWDG_RESET_BIT);
+    EPT("Window Watchdog Reset is set\n");
+  }
+  if (__HAL_RCC_GET_FLAG(RCC_FLAG_LPWRRST) != RESET){
+    SET_RESETFLAG(LPWR_RESET_BIT);
+    EPT("Low-Power Reset is set\n");
+  }
+/*
+  if (IS_RESETFLAG_SET(BOR_RESET_BIT)) {
+  }
+*/
+  __HAL_RCC_CLEAR_RESET_FLAGS();
+  
+  pinout_enable = 0;
+  HAL_GPIO_WritePin(PINOUT_GPIO_Port, PINOUT_Pin, GPIO_PIN_SET);
+
+  // SPI_CS
+  HAL_GPIO_WritePin(SPI1_CS0_GPIO_Port, SPI1_CS0_Pin, GPIO_PIN_SET);
 }
 
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
+{
+  if (htim->Instance == TIM8) {
+    if (pinout_enable) {
+      if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1) {
+        // Rising Edge
+        HAL_GPIO_WritePin(PINOUT_GPIO_Port, PINOUT_Pin, GPIO_PIN_SET);
+      } else if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_2) {
+        // Failing Edge
+        HAL_GPIO_WritePin(PINOUT_GPIO_Port, PINOUT_Pin, GPIO_PIN_RESET);
+      }
+    }
+  }
+}
 /* USER CODE END 4 */
 
 /**

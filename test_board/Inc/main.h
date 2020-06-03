@@ -83,6 +83,7 @@ typedef enum {
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
 #define TOGGLE_LED1() HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin)
+#define TOGGLE_LED2() HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin)
 #define EPT(format, ...)	do{\
                       sprintf((char*)debug_buf, "%s,%d: " format, __func__, __LINE__, ##__VA_ARGS__);\
                       HAL_UART_Transmit(&huart1, debug_buf, strlen((char*)debug_buf), 0xFF);\
@@ -101,6 +102,12 @@ uint16_t Cal_CRC16(const uint8_t* p_data, uint32_t size);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define PINOUT2_Pin GPIO_PIN_13
+#define PINOUT2_GPIO_Port GPIOC
+#define PINOUT_Pin GPIO_PIN_14
+#define PINOUT_GPIO_Port GPIOC
+#define PINOUT3_Pin GPIO_PIN_5
+#define PINOUT3_GPIO_Port GPIOC
 #define LED1_Pin GPIO_PIN_0
 #define LED1_GPIO_Port GPIOB
 #define LED2_Pin GPIO_PIN_1

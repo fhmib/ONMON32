@@ -23,9 +23,39 @@ uint8_t upgrade_process()
   Serial_PutString(buf);
   
   if (f_state.upgrade == 1) {
-    
+#ifdef USE_SRAM_FOR_FW_IMG
+    if (!IS_RESETFLAG_SET(SFT_RESET_BIT)) {
+      sprintf((char*)buf, "Error occured before upgrade success\n");
+      Serial_PutString(buf);
+      f_state.state = UPGRADE_FAILURE;
+      f_state.upgrade = 0;
+      f_state.crc16 = 0;
+      f_state.length = 0;
+      FLASH_If_Erase(CONFIG_SECTOR);
+      FLASH_If_Write(CONFIG_ADDRESS, (uint32_t*)&f_state, sizeof(UpgradeFlashState) / 4);
+      return START_FROM_FACTORY;
+    } else {
+      pdata = fw_buffer;
+      crc = Cal_CRC16(pdata, f_state.length);
+      if (crc != f_state.crc16) {
+        sprintf((char*)buf, "CRC verified failed before copy. %#X != %#X\n", crc, f_state.crc16);
+        Serial_PutString(buf);
+        f_state.state = UPGRADE_FAILURE;
+        f_state.upgrade = 0;
+        f_state.crc16 = 0;
+        f_state.length = 0;
+        FLASH_If_Erase(CONFIG_SECTOR);
+        FLASH_If_Write(CONFIG_ADDRESS, (uint32_t*)&f_state, sizeof(UpgradeFlashState) / 4);
+        return START_FROM_FACTORY;
+      }
+    }
+#endif
     FLASH_If_Erase(APPLICATION_SECTOR);
+#ifdef USE_SRAM_FOR_FW_IMG
+    if (FLASH_If_Write(APPLICATION_ADDRESS, (uint32_t*)fw_buffer, f_state.length / 4) != FLASHIF_OK) {
+#else
     if (FLASH_If_Write(APPLICATION_ADDRESS, (uint32_t*)DOWNLOAD_ADDRESS, f_state.length / 4) != FLASHIF_OK) {
+#endif
       Serial_PutString((uint8_t*)"Write to Application flash failed\n");
       f_state.state = UPGRADE_FAILURE;
       f_state.upgrade = 0;
@@ -73,6 +103,7 @@ uint8_t upgrade_process()
     return START_FROM_APPLICATION;
   }
 }
+
 void reset_config_data(void)
 {
   UpgradeFlashState f_state;

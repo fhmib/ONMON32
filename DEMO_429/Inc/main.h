@@ -29,10 +29,14 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_hal.h"
+#include "stm32f4xx_hal.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "command.h"
+
+#define USE_SRAM_FOR_FW_IMG
+
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -70,11 +74,14 @@ typedef enum {
 /* USER CODE BEGIN EC */
 extern uint8_t debug_buf[];
 extern uint8_t wd_enable;
+extern uint8_t pinout_enable;
+extern uint8_t reset_flag;
 extern RespondStruct resp_msg;
 extern UartStu uart_msg;
 extern RunState run_state;
-extern char *FW_VERSION;
-
+#ifdef USE_SRAM_FOR_FW_IMG
+extern uint8_t fw_buffer[];
+#endif
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/
@@ -86,6 +93,8 @@ extern char *FW_VERSION;
 #define UART_DMA_WAIT_PRIORITY    osPriorityRealtime5
 #define LED_CONTROL_PRIORITY      osPriorityLow
 #define CMD_PROCESS_PRIORITY      osPriorityHigh
+
+#define FW_MAX_LENGTH             0x10000
 #define LED_PERIOD                250    //ms
 
 // Uart control macro
@@ -94,6 +103,17 @@ extern char *FW_VERSION;
 #define UART_WAIT_CMD_SEMA        2000   //ms
 #define UART_DMA_TIMEOUT          5000   //ms
 #define CMD_WAIT_TEMP             50   //ms
+
+// Reset Flags
+#define BOR_RESET_BIT             (1UL << 0)
+#define PIN_RESET_BIT             (1UL << 1)
+#define POR_RESET_BIT             (1UL << 2)
+#define SFT_RESET_BIT             (1UL << 3)
+#define IWDG_RESET_BIT            (1UL << 4)
+#define WWDG_RESET_BIT            (1UL << 5)
+#define LPWR_RESET_BIT            (1UL << 6)
+#define IS_RESETFLAG_SET(bit)     (reset_flag & bit)
+#define SET_RESETFLAG(bit)        (reset_flag |= bit)
 
 /* USER CODE END EM */
 
@@ -114,6 +134,10 @@ void Mon_Init(void);
 #define LED3_GPIO_Port GPIOF
 #define LED4_Pin GPIO_PIN_9
 #define LED4_GPIO_Port GPIOF
+#define SPI1_CS0_Pin GPIO_PIN_4
+#define SPI1_CS0_GPIO_Port GPIOA
+#define PINOUT_Pin GPIO_PIN_11
+#define PINOUT_GPIO_Port GPIOH
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

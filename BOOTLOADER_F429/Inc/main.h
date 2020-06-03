@@ -32,6 +32,7 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#define USE_SRAM_FOR_FW_IMG
 
 /* USER CODE END Includes */
 
@@ -42,11 +43,28 @@ extern "C" {
 
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
+extern uint8_t reset_flag;
+#ifdef USE_SRAM_FOR_FW_IMG
+extern uint8_t fw_buffer[];
+#endif
 
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
+
+#define FW_MAX_LENGTH             0x10000
+
+// Reset Flags
+#define BOR_RESET_BIT             (1UL << 0)
+#define PIN_RESET_BIT             (1UL << 1)
+#define POR_RESET_BIT             (1UL << 2)
+#define SFT_RESET_BIT             (1UL << 3)
+#define IWDG_RESET_BIT            (1UL << 4)
+#define WWDG_RESET_BIT            (1UL << 5)
+#define LPWR_RESET_BIT            (1UL << 6)
+#define IS_RESETFLAG_SET(bit)     (reset_flag & bit)
+#define SET_RESETFLAG(bit)        (reset_flag |= bit)
 
 /* USER CODE END EM */
 
@@ -54,6 +72,7 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
+void Boot_Init(void);
 
 /* USER CODE END EFP */
 
