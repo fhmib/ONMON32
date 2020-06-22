@@ -81,7 +81,9 @@ int main(void)
   /* USER CODE BEGIN 1 */
   //int i = 0;
   //char ch;
+#if defined(USE_SRAM_FOR_FW_IMG) || defined(USE_FLASH_FOR_FW_IMG)
   uint8_t start;
+#endif
   //HAL_StatusTypeDef status;
   GPIO_PinState boot_state;
 
@@ -95,6 +97,7 @@ int main(void)
 
   /* USER CODE BEGIN Init */
   FLASH_If_Init();
+  //__HAL_SYSCFG_REMAPMEMORY_SRAM();
 
   /* USER CODE END Init */
 
@@ -113,9 +116,10 @@ int main(void)
   Boot_Init();
   HAL_UART_Transmit(&huart3, (uint8_t*)VERSION, strlen(VERSION), TX_TIMEOUT);
   //HAL_UART_Transmit(&huart3, (uint8_t*)start_msg, strlen(start_msg), TX_TIMEOUT);
-  
+
   boot_state = HAL_GPIO_ReadPin(BOOT_GPIO_Port, BOOT_Pin);
   if (boot_state == GPIO_PIN_RESET) {
+#if defined(USE_SRAM_FOR_FW_IMG) || defined(USE_FLASH_FOR_FW_IMG)
     start = upgrade_process();
     if (start == START_FROM_FACTORY) {
       Serial_PutString((uint8_t*)"Boot from factory\n");
@@ -126,6 +130,9 @@ int main(void)
     } else {
       Serial_PutString((uint8_t*)"Cannot boot\n");
     }
+#elif defined(RUN_WITH_SRAM)
+    startup_process();
+#endif
   }
   CLEAR_BIT(huart3.Instance->SR, USART_SR_RXNE);
   __HAL_UART_FLUSH_DRREGISTER(&huart3);

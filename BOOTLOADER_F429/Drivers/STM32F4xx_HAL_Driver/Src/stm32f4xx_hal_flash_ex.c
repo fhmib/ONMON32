@@ -924,6 +924,40 @@ static HAL_StatusTypeDef FLASH_OB_DisablePCROP(uint32_t SectorBank1, uint32_t Se
 
 }
 
+HAL_StatusTypeDef SetFlashDoubleBank(void)
+{
+  HAL_StatusTypeDef status = HAL_ERROR;
+  //celar all flags
+  __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_OPERR | FLASH_FLAG_WRPERR\
+                                            | FLASH_FLAG_PGAERR | FLASH_FLAG_PGPERR | FLASH_FLAG_PGSERR);
+
+  /* Wait for last operation to be completed */
+  status = FLASH_WaitForLastOperation((uint32_t)FLASH_TIMEOUT_VALUE);
+  if(status != HAL_OK)
+          return HAL_ERROR;
+  //1 UNLOCK
+  if(HAL_FLASH_OB_Unlock() != HAL_OK)
+  {
+          return HAL_ERROR;
+  }
+
+  //2 SET DOUBLE BANK BIT
+  FLASH->OPTCR |= FLASH_OPTCR_DB1M;
+
+  //3 LAUNCH THE OPTION BTYES
+  if(HAL_FLASH_OB_Launch() != HAL_OK)
+  {
+          return HAL_ERROR;
+  }
+  //4 LOCK
+  if(HAL_FLASH_OB_Lock() != HAL_OK)
+  {
+          return HAL_ERROR;
+  }
+
+  return HAL_OK;
+}
+
 #endif /* STM32F427xx || STM32F437xx || STM32F429xx || STM32F439xx || STM32F469xx || STM32F479xx */
 
 #if defined(STM32F405xx) || defined(STM32F415xx) || defined(STM32F407xx) || defined(STM32F417xx) ||\

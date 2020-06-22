@@ -33,6 +33,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "common.h"
+#include "flash_if.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -62,9 +63,15 @@ uint8_t reset_flag = 0;
 RespondStruct resp_msg;
 UartStu uart_msg;
 RunState run_state;
-
-#ifdef USE_SRAM_FOR_FW_IMG
+extern char *FW_VERSION;
+#if defined(USE_SRAM_FOR_FW_IMG)
 uint8_t fw_buffer[FW_MAX_LENGTH] __attribute__((at(0x20020000)));
+#endif
+#if defined(RUN_WITH_SRAM)
+uint8_t flash_in_use;
+uint32_t upgrade_addr;
+uint32_t upgrade_sector;
+UpgradeFlashState upgrade_status;
 #endif
 
 extern osSemaphoreId_t watchdogSemaphore;
@@ -105,7 +112,6 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -202,6 +208,8 @@ void Mon_Init(void)
   uart_msg.stage = UART_WAIT_START;
   wd_enable = 1;
 
+  EPT("Firmware version: %s\n", FW_VERSION);
+
   if (__HAL_RCC_GET_FLAG(RCC_FLAG_BORRST) != RESET){
     SET_RESETFLAG(BOR_RESET_BIT);
     EPT("BOR Reset is set\n");
@@ -241,6 +249,48 @@ void Mon_Init(void)
 
   // SPI_CS
   HAL_GPIO_WritePin(SPI1_CS0_GPIO_Port, SPI1_CS0_Pin, GPIO_PIN_SET);
+
+#if defined(RUN_WITH_SRAM)
+  FLASH_If_Init();
+  memcpy(&upgrade_status, (void*)CONFIG_ADDRESS, sizeof(UpgradeFlashState));
+  EPT("f_state: %#X, %u, %#X, %u, %#x, %u\n", upgrade_status.magic, upgrade_status.run, upgrade_status.crc16, upgrade_status.length, upgrade_status.factory_crc16, upgrade_status.factory_length);
+  if (upgrade_status.magic != 0xAA) {
+    EPT("Verify f_state.magic failed\n");
+  }
+  switch (upgrade_status.run) {
+    case 0:
+      EPT("Boot from factory\n");
+      upgrade_addr = APPLICATION_1_ADDRESS;
+      upgrade_sector = APPLICATION_1_SECTOR;
+      break;
+    case 1:
+      EPT("Boot from Application 1\n");
+      upgrade_addr = APPLICATION_2_ADDRESS;
+      upgrade_sector = APPLICATION_2_SECTOR;
+      break;
+    case 2:
+      EPT("Boot from Application 2\n");
+      upgrade_addr = APPLICATION_1_ADDRESS;
+      upgrade_sector = APPLICATION_1_SECTOR;
+      break;
+    default:
+      EPT("f_state.run invalid\n");
+      upgrade_addr = RESERVE_ADDRESS;
+      upgrade_sector = RESERVE_SECTOR;
+      break;
+  }
+  EPT("FLASH->OPTCR = %#X\n", FLASH->OPTCR);
+  if (*(uint32_t*)upgrade_addr != 0xFFFFFFFFU) {
+    flash_in_use = 1;
+    // erase flash
+    EPT("flash is not empty\n");
+    if (upgrade_addr != RESERVE_ADDRESS)
+      FLASH_If_Erase_IT(upgrade_sector);
+    EPT("erase sector...\n");
+  } else {
+    EPT("flash is empty\n");
+  }
+#endif
 }
 
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
@@ -257,6 +307,17 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
     }
   }
 }
+
+extern FLASH_ProcessTypeDef pFlash;
+void HAL_FLASH_EndOfOperationCallback(uint32_t ReturnValue)
+{
+  if (0xFFFFFFFFU == ReturnValue) {
+    EPT("Erase flash operation completely\n");
+    HAL_FLASH_Lock();
+    flash_in_use = 0;
+  }
+}
+
 /* USER CODE END 4 */
 
 /**

@@ -51,6 +51,7 @@
 #include "ymodem.h"
 #include "upgrade.h"
 #include <stdio.h>
+#include <string.h>
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
@@ -88,6 +89,9 @@ void SerialDownload(uint32_t addr)
     Serial_PutString(number);
     Serial_PutString((uint8_t *)" Bytes\r\n");
     Serial_PutString((uint8_t *)"-------------------\n");
+#if defined(RUN_WITH_SRAM)
+    update_config_data(addr, size);
+#endif
   }
   else if (result == COM_LIMIT)
   {
@@ -179,6 +183,7 @@ void Main_Menu(void)
   Serial_PutString((uint8_t *)"\r\n\r\n");
 
   while (1) {
+#if defined(USE_SRAM_FOR_FW_IMG) || defined(USE_FLASH_FOR_FW_IMG)
     Serial_PutString((uint8_t *)"\r\n=================== Main Menu ============================\r\n\n");
     Serial_PutString((uint8_t *)"  Download image to the Application -------------------- 1\r\n\n");
     Serial_PutString((uint8_t *)"  Upload image from the Application -------------------- 2\r\n\n");
@@ -190,7 +195,16 @@ void Main_Menu(void)
     Serial_PutString((uint8_t *)"  Reset device ----------------------------------------- 8\r\n\n");
     Serial_PutString((uint8_t *)"  Get Option Byte -------------------------------------- 9\r\n\n");
     Serial_PutString((uint8_t *)"==========================================================\r\n\n");
-  
+#elif defined(RUN_WITH_SRAM)
+    Serial_PutString((uint8_t *)"\r\n=================== Main Menu ============================\r\n\n");
+    Serial_PutString((uint8_t *)"  Download image to the Factory ------------------------ 1\r\n\n");
+    Serial_PutString((uint8_t *)"  Download image to the Application 1 ------------------ 2\r\n\n");
+    Serial_PutString((uint8_t *)"  Download image to the Application 2 ------------------ 3\r\n\n");
+    Serial_PutString((uint8_t *)"  Execute the process ---------------------------------- 4\r\n\n");
+    Serial_PutString((uint8_t *)"  Get Option Byte -------------------------------------- 9\r\n\n");
+    Serial_PutString((uint8_t *)"==========================================================\r\n\n");
+#endif
+
     /* Clean the input path */
     __HAL_UART_FLUSH_DRREGISTER(&huart3);
   
@@ -198,6 +212,7 @@ void Main_Menu(void)
     HAL_UART_Receive(&huart3, &key, 1, RX_TIMEOUT);
   
     switch (key) {
+#if defined(USE_SRAM_FOR_FW_IMG) || defined(USE_FLASH_FOR_FW_IMG)
       case '1' :
         /* Download user application in the Flash */
         SerialDownload(APPLICATION_ADDRESS);
@@ -262,6 +277,73 @@ void Main_Menu(void)
           Serial_PutString((uint8_t *)"RDP level 1\r\n\n");
         }
         break;
+      case 'a' :
+        SerialDownload(TRANSITION_ADDRESS);
+        break;
+      case 'b' :
+        memcpy((void*)SRAM_TARGET_ADDRESS, (void*)TRANSITION_ADDRESS, 0x10000);
+        JumpToAddr(SRAM_TARGET_ADDRESS);
+        break;
+#elif defined(RUN_WITH_SRAM)
+      case '1' :
+        /* Download user application in the Flash */
+        SerialDownload(FACTORY_ADDRESS);
+        break;
+      case '2' :
+        /* Download user application in the Flash */
+        SerialDownload(APPLICATION_1_ADDRESS);
+        break;
+      case '3' :
+        /* Download user application in the Flash */
+        SerialDownload(APPLICATION_2_ADDRESS);
+        break;
+      case '4' :
+        startup_process();
+        break;
+      case '9' :
+        sprintf(buf, "OPTCR = %#X\r\n\n", (uint32_t)FLASH->OPTCR);
+        Serial_PutString((uint8_t *)buf);
+        sprintf(buf, "OPTCR = %#X\r\n\n", (uint32_t)FLASH->OPTCR1);
+        Serial_PutString((uint8_t *)buf);
+        sprintf(buf, "MEMRMP = %#X\r\n\n", (uint32_t)SYSCFG->MEMRMP);
+        Serial_PutString((uint8_t *)buf);
+        sprintf(buf, "ErrorCode = %#X\r\n\n", pFlash.ErrorCode);
+        Serial_PutString((uint8_t *)buf);
+        FLASH_If_GetOptionByte(&OptionsBytesStruct);
+        sprintf(buf, "WRPSector = %#X\r\n", OptionsBytesStruct.WRPSector);
+        Serial_PutString((uint8_t *)buf);
+        sprintf(buf, "RDPLevel = %#X\r\n", OptionsBytesStruct.RDPLevel);
+        Serial_PutString((uint8_t *)buf);
+        sprintf(buf, "USERConfig = %#X\r\n", OptionsBytesStruct.USERConfig);
+        Serial_PutString((uint8_t *)buf);
+        sprintf(buf, "BORLevel = %#X\r\n\n", OptionsBytesStruct.BORLevel);
+        Serial_PutString((uint8_t *)buf);
+        sprintf(buf, "ErrorCode = %#X\r\n\n", pFlash.ErrorCode);
+        Serial_PutString((uint8_t *)buf);
+        if (OptionsBytesStruct.WRPSector & (1 << FACTORY_SECTOR)) {
+          Serial_PutString((uint8_t *)"Factory memory is not protected\r\n");
+        } else {
+          Serial_PutString((uint8_t *)"Factory memory is protected\r\n");
+        }
+        if (OptionsBytesStruct.WRPSector & (1 << APPLICATION_1_SECTOR)) {
+          Serial_PutString((uint8_t *)"Application 1 memory is not protected\r\n");
+        } else {
+          Serial_PutString((uint8_t *)"Application 1 memory is protected\r\n");
+        }
+        if (OptionsBytesStruct.WRPSector & (1 << APPLICATION_2_SECTOR)) {
+          Serial_PutString((uint8_t *)"Application 2 memory is not protected\r\n");
+        } else {
+          Serial_PutString((uint8_t *)"Application 2 memory is protected\r\n");
+        }
+        if (OptionsBytesStruct.RDPLevel == 0xAA) {
+          Serial_PutString((uint8_t *)"RDP level 0\r\n\n");
+        } else if (OptionsBytesStruct.RDPLevel == 0xCC) {
+          Serial_PutString((uint8_t *)"RDP level 2\r\n\n");
+        } else {
+          Serial_PutString((uint8_t *)"RDP level 1\r\n\n");
+        }
+        break;
+#endif
       default:
         Serial_PutString((uint8_t *)"Invalid character!\r\n");
         break;

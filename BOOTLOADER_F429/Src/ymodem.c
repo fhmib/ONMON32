@@ -327,8 +327,17 @@ COM_StatusTypeDef Ymodem_Receive (uint32_t addr, uint32_t *p_size )
                     /* erase user application area */
                     if (addr == FACTORY_ADDRESS)
                       FLASH_If_Erase(FLASH_SECTOR_5);
+#if defined(USE_SRAM_FOR_FW_IMG) || defined(USE_FLASH_FOR_FW_IMG)
                     else if (addr == APPLICATION_ADDRESS)
                       FLASH_If_Erase(FLASH_SECTOR_6);
+#elif defined(RUN_WITH_SRAM)
+                    else if (addr == APPLICATION_1_ADDRESS)
+                      FLASH_If_Erase(APPLICATION_1_SECTOR);
+                    else if (addr == APPLICATION_2_ADDRESS)
+                      FLASH_If_Erase(APPLICATION_2_SECTOR);
+#endif
+                    else if (addr == TRANSITION_ADDRESS)
+                      FLASH_If_Erase(FLASH_SECTOR_4);
                     *p_size = filesize;
 
                     Serial_PutByte(ACK);

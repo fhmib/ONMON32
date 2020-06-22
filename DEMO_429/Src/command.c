@@ -14,9 +14,9 @@
 UpgradeStruct up_state;
 extern osSemaphoreId_t flashSemaphore;
 
-char *FW_VERSION = "TESTPO05    "; // Total length must bigger than 8 bytes
-char *SERIAL_NUMBER = "123456789    "; // Total length must bigger than 9 bytes
-char *PART_NUMBER = "1231231231231231    "; // Total length must bigger than 16 bytes
+char *FW_VERSION = "TESTSR05  "; // Total length must bigger than 8 bytes
+char *SERIAL_NUMBER = "123456789  "; // Total length must bigger than 9 bytes
+char *PART_NUMBER = "1231231231231231  "; // Total length must bigger than 16 bytes
 char *MDATE = "20200202    "; // Total length must bigger than 8 bytes
 
 CmdStruct command_list[] = {
@@ -130,7 +130,11 @@ uint32_t Cmd_Upgrade_Mode()
       return RESPOND_SUCCESS;
     }
   } else if (mode == 0x2) {
+#if defined(RUN_WITH_SRAM)
+    if (run_state.mode == RUN_MODE_UPGRADE || upgrade_addr == RESERVE_ADDRESS) {
+#else
     if (run_state.mode == RUN_MODE_UPGRADE) {
+#endif
       FILL_RESP_MSG(RESPOND_FAILURE, CMD_UPGRADE_MODE, 0);
       return RESPOND_FAILURE;
     } else {
@@ -152,8 +156,11 @@ uint32_t Cmd_Upgrade_Data()
 {
   uint16_t seq;
   uint8_t *p_fw_data = &uart_msg.uart_buf[CMD_SEQ_DATA + 2];
-#ifndef USE_SRAM_FOR_FW_IMG
+#if defined(USE_FLASH_FOR_FW_IMG)
   uint32_t status;
+#endif
+#if defined(RUN_WITH_SRAM)
+  uint32_t to;
 #endif
 
   if (run_state.mode != RUN_MODE_UPGRADE) {
@@ -171,10 +178,16 @@ uint32_t Cmd_Upgrade_Data()
   if (seq == 0x1) {
     up_state.pre_seq = seq;
     // TODO: Parse file header
+    if (strcmp((char*)&p_fw_data[FW_FILE_MODULE_NAME], "MON32")) {
+      // failed
+      up_state.pre_state = UPGRADE_FAILURE;
+      FILL_RESP_MSG(RESPOND_FAILURE, CMD_UPGRADE_DATA, 0);
+      return RESPOND_FAILURE;
+    }
 
     if (1) {
       // success
-      osDelay(pdMS_TO_TICKS(10));
+      //osDelay(pdMS_TO_TICKS(10));
       up_state.pre_state = UPGRADE_SUCCESS;
       FILL_RESP_MSG(RESPOND_SUCCESS, CMD_UPGRADE_DATA, 0);
       return RESPOND_SUCCESS;
@@ -194,7 +207,7 @@ uint32_t Cmd_Upgrade_Data()
               (p_fw_data[FW_FILE_CRC + 1 - 0x80] << 0);
       EPT("Fw size = %#X, crc = %#X\n", up_state.length, up_state.crc16);
 
-#ifndef USE_SRAM_FOR_FW_IMG
+#if defined(USE_FLASH_FOR_FW_IMG)
       // TODO: Upgrade initialization process
       FLASH_If_Init();
 
@@ -217,7 +230,8 @@ uint32_t Cmd_Upgrade_Data()
         FILL_RESP_MSG(RESPOND_FAILURE, CMD_UPGRADE_DATA, 0);
         return RESPOND_FAILURE;
       }
-#else
+#endif
+#if defined(USE_SRAM_FOR_FW_IMG)
       if (up_state.length > FW_MAX_LENGTH) {
         EPT("Length invalid\n");
         up_state.pre_state = UPGRADE_FAILURE;
@@ -229,17 +243,32 @@ uint32_t Cmd_Upgrade_Data()
         return RESPOND_SUCCESS;
       }
 #endif
+#if defined(RUN_WITH_SRAM)
+      if (up_state.length > FW_MAX_LENGTH) {
+        EPT("Length invalid\n");
+        up_state.pre_state = UPGRADE_FAILURE;
+        FILL_RESP_MSG(RESPOND_FAILURE, CMD_UPGRADE_DATA, 0);
+        return RESPOND_FAILURE;
+      }
+      if (*(uint32_t*)upgrade_addr != 0xFFFFFFFFU && !flash_in_use) {
+        // erase flash
+        flash_in_use = 1;
+        FLASH_If_Erase_IT(upgrade_sector);
+      }
+      up_state.pre_state = UPGRADE_SUCCESS;
+      FILL_RESP_MSG(RESPOND_SUCCESS, CMD_UPGRADE_DATA, 0);
+      return RESPOND_SUCCESS;
+#endif
     } else {
       EPT("Seq invalid\n");
       FILL_RESP_MSG(RESPOND_FAILURE, CMD_UPGRADE_DATA, 0);
       return RESPOND_FAILURE;
     }
-
   } else if (seq <= UPGRADE_MAX_SEQ && seq > 2) {
     if ((seq == up_state.pre_seq + 1 && up_state.pre_state == UPGRADE_SUCCESS) || \
       (seq == up_state.pre_seq && up_state.pre_state == UPGRADE_FAILURE)) {
       up_state.pre_seq = seq;
-#ifndef USE_SRAM_FOR_FW_IMG
+#if defined(USE_FLASH_FOR_FW_IMG)
       // Subsequent data
       if (FLASH_If_Write(DOWNLOAD_ADDRESS + (seq - 3) * PACKET_LENGTH, (uint32_t*)p_fw_data, PACKET_LENGTH / 4) == FLASHIF_OK) {
         up_state.pre_state = UPGRADE_SUCCESS;
@@ -253,11 +282,37 @@ uint32_t Cmd_Upgrade_Data()
         FILL_RESP_MSG(RESPOND_FAILURE, CMD_UPGRADE_DATA, 0);
         return RESPOND_FAILURE;
       }
-#else
+#endif
+#if defined(USE_SRAM_FOR_FW_IMG)
       memcpy(fw_buffer + (seq - 3) * PACKET_LENGTH, p_fw_data, PACKET_LENGTH);
       up_state.pre_state = UPGRADE_SUCCESS;
       FILL_RESP_MSG(RESPOND_SUCCESS, CMD_UPGRADE_DATA, 0);
       return RESPOND_SUCCESS;
+#endif
+#if defined(RUN_WITH_SRAM)
+      if (seq == 3) {
+        to = 0;
+        while (flash_in_use && to++ < 15) {
+          osDelay(pdMS_TO_TICKS(100));
+        }
+        if (to >= 15) {
+          EPT("Waiting flash timeout\n");
+          up_state.pre_state = UPGRADE_FAILURE;
+          FILL_RESP_MSG(RESPOND_FAILURE, CMD_UPGRADE_DATA, 0);
+          return RESPOND_FAILURE;
+        }
+      }
+      if (FLASH_If_Write(upgrade_addr + (seq - 3) * PACKET_LENGTH, (uint32_t*)p_fw_data, PACKET_LENGTH / 4) == FLASHIF_OK) {
+        up_state.pre_state = UPGRADE_SUCCESS;
+        FILL_RESP_MSG(RESPOND_SUCCESS, CMD_UPGRADE_DATA, 0);
+        return RESPOND_SUCCESS;
+      } else {
+        /* An error occurred while writing to Flash memory */
+        EPT("Write flash failed\n");
+        up_state.pre_state = UPGRADE_FAILURE;
+        FILL_RESP_MSG(RESPOND_FAILURE, CMD_UPGRADE_DATA, 0);
+        return RESPOND_FAILURE;
+      }
 #endif
     } else {
       EPT("Invalid seq = %u\n", seq);
@@ -270,12 +325,10 @@ uint32_t Cmd_Upgrade_Data()
     FILL_RESP_MSG(RESPOND_INVALID_PARAM, CMD_UPGRADE_DATA, 0);
     return RESPOND_INVALID_PARAM;
   }
-
 }
 
 uint32_t Cmd_Upgrade_Run()
 {
-  UpgradeFlashState f_state;
   uint32_t status;
 
   if (run_state.mode != RUN_MODE_UPGRADE) {
@@ -289,11 +342,16 @@ uint32_t Cmd_Upgrade_Run()
     return RESPOND_FAILURE;
   }
 
-#ifndef USE_SRAM_FOR_FW_IMG
+#if defined(USE_FLASH_FOR_FW_IMG)
   uint8_t *pdata = (uint8_t*)DOWNLOAD_ADDRESS;
   uint16_t crc = Cal_CRC16(pdata, up_state.length);
-#else
+#endif
+#if defined(USE_SRAM_FOR_FW_IMG)
   uint8_t *pdata = fw_buffer;
+  uint16_t crc = Cal_CRC16(pdata, up_state.length);
+#endif
+#if defined(RUN_WITH_SRAM)
+  uint8_t *pdata = (uint8_t*)upgrade_addr;
   uint16_t crc = Cal_CRC16(pdata, up_state.length);
 #endif
   if (crc != up_state.crc16) {
@@ -303,13 +361,20 @@ uint32_t Cmd_Upgrade_Run()
   }
 
   // TODO: save necessary info
+#if defined(USE_FLASH_FOR_FW_IMG) || defined(USE_SRAM_FOR_FW_IMG)
   memcpy(&f_state, (void*)CONFIG_ADDRESS, sizeof(UpgradeFlashState));
   EPT("Old f_state: %u, %u, %#X, %u\n", f_state.state, f_state.upgrade, f_state.crc16, f_state.length);
   f_state.state = UPGRADE_UNUSABLE;
   f_state.crc16 = up_state.crc16;
   f_state.length = up_state.length;
   f_state.upgrade = 1;
-
+#endif
+#if defined(RUN_WITH_SRAM)
+  EPT("f_state: %#X, %u, %#X, %u, %#x, %u\n", upgrade_status.magic, upgrade_status.run, upgrade_status.crc16, upgrade_status.length, upgrade_status.factory_crc16, upgrade_status.factory_length);
+  upgrade_status.run = upgrade_addr == APPLICATION_1_ADDRESS ? 1 : 2;
+  upgrade_status.crc16 = up_state.crc16;
+  upgrade_status.length = up_state.length;
+#endif
   wd_enable = 0;
   HAL_IWDG_Refresh(&hiwdg);
   status = FLASH_If_Erase(CONFIG_SECTOR);
@@ -324,13 +389,15 @@ uint32_t Cmd_Upgrade_Run()
     return RESPOND_FAILURE;
   }
 
-  if (FLASH_If_Write(CONFIG_ADDRESS, (uint32_t*)&f_state, sizeof(UpgradeFlashState) / 4) != FLASHIF_OK) {
+  if (FLASH_If_Write(CONFIG_ADDRESS, (uint32_t*)&upgrade_status, sizeof(UpgradeFlashState) / 4) != FLASHIF_OK) {
     EPT("Write flash failed\n");
     FILL_RESP_MSG(RESPOND_FAILURE, CMD_UPGRADE_RUN, 0);
     return RESPOND_FAILURE;
   }
-  memcpy(&f_state, (void*)CONFIG_ADDRESS, sizeof(UpgradeFlashState));
+  memcpy(&upgrade_status, (void*)CONFIG_ADDRESS, sizeof(UpgradeFlashState));
+#if defined(USE_FLASH_FOR_FW_IMG) || defined(USE_SRAM_FOR_FW_IMG)
   EPT("New f_state: %u, %u, %#X, %u\n", f_state.state, f_state.upgrade, f_state.crc16, f_state.length);
+#endif
 
   Uart_Respond(RESPOND_SUCCESS, CMD_UPGRADE_RUN, NULL, 0);
 
@@ -380,22 +447,7 @@ uint8_t Cal_Check(uint8_t *pdata, uint32_t len)
 int Uart_Respond(uint8_t status, uint16_t cmd, uint8_t *pdata, uint32_t len)
 {
   uint32_t cmd_len = 0;
-#if 0
-  if (status == RESPOND_CHECKSUM_ERR || status == RESPOND_UNSUPPORT || pdata == NULL) {
-    uart_msg.uart_buf[cmd_len++] = UART_START_BYTE;
-    uart_msg.uart_buf[cmd_len++] = 1 + 2 + 1 + 1; // Length + command + status + chk
-    cmd_len += 2;
-    uart_msg.uart_buf[cmd_len++] = status;
-    uart_msg.uart_buf[cmd_len++] = Cal_Check(&uart_msg.uart_buf[CMD_SEQ_LENGTH], 1 + 2);
-    if (HAL_UART_Transmit(&huart1, uart_msg.uart_buf, cmd_len, 0xFF) != HAL_OK) {
-      EPT("Respond command failed\n");
-      return -1;
-    } else {
-      EPT("Respond command = %#X, status = %#X\n", cmd, status);
-      return 0;
-    }
-  }
-#endif
+
   uart_msg.uart_buf[cmd_len++] = UART_START_BYTE;
   uart_msg.uart_buf[cmd_len++] = 1 + 2 + len + 1 + 1; // Length + command + data + status + chk
   uart_msg.uart_buf[cmd_len++] = (uint8_t)(cmd >> 8);
@@ -411,7 +463,8 @@ int Uart_Respond(uint8_t status, uint16_t cmd, uint8_t *pdata, uint32_t len)
     EPT("Respond command failed\n");
       return -1;
   } else {
-    EPT("Respond command = %#X, status = %#X\n", cmd, status);
+    if (status != 0)
+      EPT("Respond command = %#X, status = %#X\n", cmd, status);
     return 0;
   }
 }

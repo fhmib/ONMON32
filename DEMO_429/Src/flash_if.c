@@ -47,7 +47,7 @@
 /* Private define ------------------------------------------------------------*/
 /*  1M0 flash 1 * 1024 * 1024 */
 //#define DOWNLOAD_START_ADRESS    0x08060000
-#define FLASH_SECTOR_COUNT       12
+#define FLASH_SECTOR_COUNT       19
 
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
@@ -108,6 +108,38 @@ uint32_t FLASH_If_Erase(uint32_t sector)
 
   return FLASHIF_OK;
 }
+
+uint32_t FLASH_If_Erase_IT(uint32_t sector)
+{
+  FLASH_EraseInitTypeDef pEraseInit;
+  HAL_StatusTypeDef status = HAL_OK;
+
+  if (sector >= FLASH_SECTOR_COUNT)
+    return FLASHIF_ERASEKO;
+
+  /* Unlock the Flash to enable the flash control register access *************/ 
+  HAL_FLASH_Unlock();
+
+  pEraseInit.Banks = FLASH_BANK_1;
+  pEraseInit.Sector = sector;
+  pEraseInit.NbSectors = 1;
+  pEraseInit.TypeErase = FLASH_TYPEERASE_SECTORS;
+  pEraseInit.VoltageRange = FLASH_VOLTAGE_RANGE_3;
+  status = HAL_FLASHEx_Erase_IT(&pEraseInit);
+  
+  /* Lock the Flash to disable the flash control register access (recommended
+     to protect the FLASH memory against possible unwanted operation) *********/
+  //HAL_FLASH_Lock();
+
+  if (status != HAL_OK)
+  {
+    /* Error occurred while page erase */
+    return FLASHIF_ERASEKO;
+  }
+
+  return FLASHIF_OK;
+}
+
 
 /* Public functions ---------------------------------------------------------*/
 /**

@@ -47,7 +47,7 @@
 /* Private define ------------------------------------------------------------*/
 /*  1M0 flash 1 * 1024 * 1024 */
 #define FLASH_START_ADRESS    0x08000000
-#define FLASH_SECTOR_COUNT     12
+#define FLASH_SECTOR_COUNT     19
 
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
@@ -62,8 +62,10 @@
   */
 void FLASH_If_Init(void)
 {
+  //SetFlashDoubleBank();
   /* Unlock the Program memory */
   HAL_FLASH_Unlock();
+
 
   /* Clear all FLASH flags */
   __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_PGSERR | FLASH_FLAG_WRPERR);

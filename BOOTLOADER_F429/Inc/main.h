@@ -32,7 +32,9 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#define USE_SRAM_FOR_FW_IMG
+#undef USE_FLASH_FOR_FW_IMG
+#undef USE_SRAM_FOR_FW_IMG
+#define RUN_WITH_SRAM
 
 /* USER CODE END Includes */
 

@@ -41,6 +41,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_hal.h"
+#include "main.h"
 
 /* Exported types ------------------------------------------------------------*/
 /* Exported constants --------------------------------------------------------*/
@@ -72,14 +73,23 @@ enum {
 
 /* Define the address from where user application will be loaded.
    Note: this area is reserved for the IAP code                  */
-//#define BOOTLOADER_ADDRESS      (uint32_t)0x08000000
-//#define FACTORY_ADDRESS         (uint32_t)0x08020000
-//#define APPLICATION_ADDRESS     (uint32_t)0x08040000
+#if defined(USE_FLASH_FOR_FW_IMG) || defined(USE_SRAM_FOR_FW_IMG)
 #define CONFIG_ADDRESS            (uint32_t)0x08008000
 #define DOWNLOAD_ADDRESS          (uint32_t)0x08060000
 #define CONFIG_SECTOR             FLASH_SECTOR_2
 #define DOWNLOAD_SECTOR           FLASH_SECTOR_7
-
+#elif defined(RUN_WITH_SRAM)
+#define CONFIG_ADDRESS            (uint32_t)0x08008000
+#define APPLICATION_1_ADDRESS     (uint32_t)0x08040000
+//#define APPLICATION_1_ADDRESS     (uint32_t)0x080A0000
+#define APPLICATION_2_ADDRESS     (uint32_t)0x08060000
+#define RESERVE_ADDRESS           (uint32_t)0x08080000
+#define CONFIG_SECTOR             FLASH_SECTOR_2
+#define APPLICATION_1_SECTOR      FLASH_SECTOR_6
+//#define APPLICATION_1_SECTOR      FLASH_SECTOR_17
+#define APPLICATION_2_SECTOR      FLASH_SECTOR_7
+#define RESERVE_SECTOR            FLASH_SECTOR_8
+#endif
 /* Notable Flash addresses */
 #define USER_FLASH_END_ADDRESS        0x08100000
 
@@ -91,6 +101,7 @@ enum {
 /* Exported functions ------------------------------------------------------- */
 void FLASH_If_Init(void);
 uint32_t FLASH_If_Erase(uint32_t StartSector);
+uint32_t FLASH_If_Erase_IT(uint32_t StartSector);
 uint32_t FLASH_If_Write(uint32_t destination, uint32_t *p_source, uint32_t length);
 
 #endif  /* __FLASH_IF_H */

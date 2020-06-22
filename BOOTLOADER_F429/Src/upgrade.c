@@ -1,10 +1,12 @@
 #include "upgrade.h"
 #include "main.h"
 #include "common.h"
+#include "menu.h"
 #include "flash_if.h"
 #include <stdio.h>
 #include <string.h>
 
+#if defined(USE_SRAM_FOR_FW_IMG) || defined(USE_FLASH_FOR_FW_IMG)
 uint8_t upgrade_process()
 {
   UpgradeFlashState f_state;
@@ -117,3 +119,88 @@ void reset_config_data(void)
   
   return;
 }
+#elif defined(RUN_WITH_SRAM)
+void startup_process()
+{
+  UpgradeFlashState f_state;
+  uint8_t buf[256];
+
+  memcpy(&f_state, (void*)CONFIG_ADDRESS, sizeof(UpgradeFlashState));
+  if (f_state.magic != 0xAA) {
+    sprintf((char*)buf, "state is uninitialized, boot from factory\n");
+    Serial_PutString(buf);
+    update_config_data(FACTORY_ADDRESS, 0x10000);
+    memcpy(&f_state, (void*)CONFIG_ADDRESS, sizeof(UpgradeFlashState));
+  }
+
+  sprintf((char*)buf, "f_state: %#X, %u, %#X, %u, %#x, %u\n", f_state.magic, f_state.run, f_state.crc16, f_state.length, f_state.factory_crc16, f_state.factory_length);
+  Serial_PutString(buf);
+  if (f_state.run == 0) {
+    sprintf((char*)buf, "Boot from factory...\n");
+    Serial_PutString(buf);
+    if (boot_process(FACTORY_ADDRESS, f_state.factory_length, f_state.factory_crc16)) {
+      sprintf((char*)buf, "Fatal error!!!\n");
+      Serial_PutString(buf);
+    }
+  } else if (f_state.run == 1) {
+    sprintf((char*)buf, "Boot from application 1...\n");
+    Serial_PutString(buf);
+    if (boot_process(APPLICATION_1_ADDRESS, f_state.length, f_state.crc16)) {
+      sprintf((char*)buf, "Boot application failed\n");
+      Serial_PutString(buf);
+      if (boot_process(FACTORY_ADDRESS, f_state.factory_length, f_state.factory_crc16)) {
+        sprintf((char*)buf, "Fatal error!!!\n");
+        Serial_PutString(buf);
+      }
+    }
+  } else if (f_state.run == 2) {
+    sprintf((char*)buf, "Boot from application 2...\n");
+    Serial_PutString(buf);
+    if (boot_process(APPLICATION_2_ADDRESS, f_state.length, f_state.crc16)) {
+      sprintf((char*)buf, "Boot application failed\n");
+      Serial_PutString(buf);
+      if (boot_process(FACTORY_ADDRESS, f_state.factory_length, f_state.factory_crc16)) {
+        sprintf((char*)buf, "Fatal error!!!\n");
+        Serial_PutString(buf);
+      }
+    }
+  }
+  
+  return;
+}
+
+uint8_t boot_process(uint32_t addr, uint32_t length, uint16_t crc16)
+{
+  memcpy((void*)SRAM_TARGET_ADDRESS, (void*)addr, length);
+  
+  if (crc16 != Cal_CRC16((uint8_t*)addr, length)) {
+    return 1;
+  } else {
+    JumpToAddr(SRAM_TARGET_ADDRESS);
+  }
+
+  return 0;
+}
+
+void update_config_data(uint32_t addr, uint32_t size)
+{
+  UpgradeFlashState f_state;
+  
+  if (addr == FACTORY_ADDRESS) {
+    f_state.magic = 0xAA;
+    f_state.run = 0;
+    f_state.length = 0;
+    f_state.crc16 = 0;
+    f_state.factory_crc16 = Cal_CRC16((uint8_t*)addr, size);
+    f_state.factory_length = size;
+  } else {
+    memcpy(&f_state, (void*)CONFIG_ADDRESS, sizeof(UpgradeFlashState));
+    f_state.run = addr == APPLICATION_1_ADDRESS ? 1 : 2;
+    f_state.length = size;
+    f_state.crc16 = Cal_CRC16((uint8_t*)addr, size);
+  }
+
+  FLASH_If_Erase(CONFIG_SECTOR);
+  FLASH_If_Write(CONFIG_ADDRESS, (uint32_t*)&f_state, sizeof(UpgradeFlashState) / 4);
+}
+#endif

@@ -35,7 +35,9 @@ extern "C" {
 /* USER CODE BEGIN Includes */
 #include "command.h"
 
-#define USE_SRAM_FOR_FW_IMG
+#undef USE_FLASH_FOR_FW_IMG
+#undef USE_SRAM_FOR_FW_IMG
+#define RUN_WITH_SRAM
 
 /* USER CODE END Includes */
 
@@ -79,8 +81,14 @@ extern uint8_t reset_flag;
 extern RespondStruct resp_msg;
 extern UartStu uart_msg;
 extern RunState run_state;
-#ifdef USE_SRAM_FOR_FW_IMG
+#if defined(USE_SRAM_FOR_FW_IMG)
 extern uint8_t fw_buffer[];
+#endif
+#if defined(RUN_WITH_SRAM)
+extern uint8_t flash_in_use;
+extern uint32_t upgrade_addr;
+extern uint32_t upgrade_sector;
+extern UpgradeFlashState upgrade_status;
 #endif
 /* USER CODE END EC */
 
@@ -138,6 +146,8 @@ void Mon_Init(void);
 #define SPI1_CS0_GPIO_Port GPIOA
 #define PINOUT_Pin GPIO_PIN_11
 #define PINOUT_GPIO_Port GPIOH
+#define EEPROM_WP_Pin GPIO_PIN_5
+#define EEPROM_WP_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

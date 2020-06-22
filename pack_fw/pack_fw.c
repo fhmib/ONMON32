@@ -40,6 +40,7 @@ int main(int argc, char *argv[])
 	uint16_t crc = 0;
 	uint32_t crc32 = 0;
 	char d_name[16];
+	char m_name[32];
 
 	if (argc < 2) {
 		printf("Need file\n");
@@ -54,6 +55,8 @@ int main(int argc, char *argv[])
 	printf("Please input version:");
 	scanf("%s", buf);
 	sprintf(d_name, "fw_%s", buf);
+	printf("Please input Module Name:");
+	scanf("%s", m_name);
 
 	fp = fopen(d_name, "wb");
 
@@ -80,6 +83,7 @@ int main(int argc, char *argv[])
 	fseek(fp_old, 0, SEEK_SET);
 
 	memset(buf, 0, sizeof(buf));
+	sprintf(&buf[FW_FILE_MODULE_NAME], "%s", m_name);
 	buf[FW_FILE_FW_LENGTH] = (uint8_t)(file_length >> 24);
 	buf[FW_FILE_FW_LENGTH + 1] = (uint8_t)(file_length >> 16);
 	buf[FW_FILE_FW_LENGTH + 2] = (uint8_t)(file_length >> 8);

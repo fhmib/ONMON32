@@ -41,6 +41,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_hal.h"
+#include "main.h"
 
 /* Exported types ------------------------------------------------------------*/
 /* Exported constants --------------------------------------------------------*/
@@ -72,15 +73,36 @@ enum {
 
 /* Define the address from where user application will be loaded.
    Note: this area is reserved for the IAP code                  */
+#if defined(USE_SRAM_FOR_IMAGE) || defined(USE_FLASH_FOR_IMAGE)
 #define BOOTLOADER_ADDRESS        (uint32_t)0x08000000
 #define CONFIG_ADDRESS            (uint32_t)0x08008000
+#define TRANSITION_ADDRESS        (uint32_t)0x08010000
 #define FACTORY_ADDRESS           (uint32_t)0x08020000
 #define APPLICATION_ADDRESS       (uint32_t)0x08040000
 #define DOWNLOAD_ADDRESS          (uint32_t)0x08060000
+#define SRAM_TARGET_ADDRESS       (uint32_t)0x20020000
 #define CONFIG_SECTOR             FLASH_SECTOR_2
 #define FACTORY_SECTOR            FLASH_SECTOR_5
 #define APPLICATION_SECTOR        FLASH_SECTOR_6
 #define DOWNLOAD_SECTOR           FLASH_SECTOR_7
+#elif defined(RUN_WITH_SRAM)
+#define BOOTLOADER_ADDRESS        (uint32_t)0x08000000
+#define CONFIG_ADDRESS            (uint32_t)0x08008000
+#define TRANSITION_ADDRESS        (uint32_t)0x08010000
+#define FACTORY_ADDRESS           (uint32_t)0x08020000
+#define APPLICATION_1_ADDRESS     (uint32_t)0x08040000
+//#define APPLICATION_1_ADDRESS     (uint32_t)0x080A0000
+#define APPLICATION_2_ADDRESS     (uint32_t)0x08060000
+#define RESERVE_ADDRESS           (uint32_t)0x08080000
+#define SRAM_TARGET_ADDRESS       (uint32_t)0x20000000
+#define CONFIG_SECTOR             FLASH_SECTOR_2
+#define FACTORY_SECTOR            FLASH_SECTOR_5
+#define APPLICATION_1_SECTOR      FLASH_SECTOR_6
+//#define APPLICATION_1_SECTOR      FLASH_SECTOR_17
+#define APPLICATION_2_SECTOR      FLASH_SECTOR_7
+#define RESERVE_SECTOR            FLASH_SECTOR_8
+#endif
+
 
 /* Notable Flash addresses */
 #define USER_FLASH_END_ADDRESS        0x08100000

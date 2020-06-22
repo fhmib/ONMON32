@@ -87,6 +87,7 @@
 /** @addtogroup STM32F4xx_System_Private_Defines
   * @{
   */
+#define VECT_TAB_SRAM
 
 /************************* Miscellaneous Configuration ************************/
 /*!< Uncomment the following line if you need to use external SRAM or SDRAM as data memory  */
@@ -106,7 +107,7 @@
 /*!< Uncomment the following line if you need to relocate your vector Table in
      Internal SRAM. */
 /* #define VECT_TAB_SRAM */
-#define VECT_TAB_OFFSET  0x40000 /*!< Vector Table base offset field. 
+#define VECT_TAB_OFFSET  0x20000000 /*!< Vector Table base offset field. 
                                    This value must be a multiple of 0x200. */
 /******************************************************************************/
 
